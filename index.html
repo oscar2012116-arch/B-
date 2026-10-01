@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>家庭懲罰系統 - 雲端同步版</title>
+    <!-- 引入 Firebase SDK (Compat 版) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f5f5f5; padding: 10px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+        
+        .login-screen { padding: 30px 20px; text-align: center; background: white; }
+        .login-screen h1 { color: #FF9800; margin-bottom: 10px; font-size: 28px; }
+        .login-screen h2 { color: #666; margin-bottom: 30px; font-size: 16px; }
+        
+        .member-buttons { display: flex; flex-direction: column; gap: 12px; margin: 20px 0; }
+        .member-btn { padding: 18px; font-size: 18px; font-weight: bold; border: none; border-radius: 12px; background: #f0f0f0; color: #333; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .member-btn:hover { background: #FF9800; color: white; transform: scale(1.02); }
+        .member-btn.admin { background: #FF9800; color: white; }
+        .member-btn.admin:hover { background: #F57C00; }
+        .member-btn .badge { background: rgba(255,255,255,0.3); padding: 5px 10px; border-radius: 20px; font-size: 12px; }
+
+        .main-screen, .admin-screen, .add-ticket-screen, .profile-screen { display: none; padding: 15px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px 0; }
+        .header h2 { color: #333; font-size: 20px; }
+        .nav-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+        .nav-btn { padding: 10px 15px; background: #FF9800; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; }
+        .nav-btn.secondary { background: #4CAF50; }
+        .nav-btn.profile { background: #2196F3; }
+
+        .user-info { background: #E3F2FD; padding: 15px; border-radius: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .user-info .welcome { font-size: 16px; color: #1976D2; font-weight: bold; }
+        .user-info .role-badge { background: #1976D2; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; }
+        .user-info .logout-btn { padding: 8px 15px; background: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 13px; }
+
+        .ticket-list { margin-top: 15px; max-height: 60vh; overflow-y: auto; }
+        .ticket-card { background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .ticket-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .ticket-header h3 { color: #333; font-size: 18px; }
+        .ticket-date { color: #999; font-size: 12px; }
+        .ticket-creator { background: #E3F2FD; padding: 4px 10px; border-radius: 15px; font-size: 12px; color: #1976D2; display: inline-block; margin-bottom: 8px; }
+        .ticket-reason { background: #F3E5F5; padding: 12px; border-radius: 8px; margin: 8px 0; font-size: 15px; color: #7B1FA2; border-left: 4px solid #9C27B0; }
+        .ticket-punishment { background: #FFF3E0; padding: 12px; border-radius: 8px; margin: 8px 0; font-size: 16px; color: #E65100; border-left: 4px solid #FF9800; font-weight: 500; }
+        .ticket-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        .ticket-actions { display: flex; gap: 8px; }
+        .ticket-actions button { padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        
+        .complete-btn { background: #4CAF50; color: white; }
+        .edit-btn { background: #2196F3; color: white; }
+        .delete-btn { background: #f44336; color: white; }
+        .completed-ticket { opacity: 0.7; background: #f9f9f9; }
+        .completed-ticket .ticket-punishment, .completed-ticket .ticket-reason { background: #EEEEEE; color: #999; text-decoration: line-through; }
+        .completed-badge { color: #4CAF50; font-weight: bold; font-size: 14px; }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; font-size: 15px; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; }
+        .radio-group { display: flex; gap: 20px; margin: 10px 0; }
+        .radio-group label { display: flex; align-items: center; gap: 5px; font-weight: normal; }
+
+        .section-title { font-size: 18px; color: #333; margin: 25px 0 15px 0; padding-bottom: 8px; border-bottom: 2px solid #FF9800; }
+        .accounts-list, .punishment-list { margin: 15px 0; max-height: 40vh; overflow-y: auto; }
+        .account-card, .member-item { background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 15px; margin-bottom: 10px; }
+        .member-item { display: flex; justify-content: space-between; align-items: center; }
+        .account-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .account-name { font-size: 18px; font-weight: bold; color: #333; }
+        .account-role { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .role-admin { background: #FF9800; color: white; }
+        .role-member { background: #2196F3; color: white; }
+        .account-details { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; padding: 10px; background: white; border-radius: 8px; }
+        .account-detail { display: flex; align-items: center; gap: 10px; }
+        .detail-label { width: 70px; color: #666; font-size: 14px; }
+        .detail-value { flex: 1; font-size: 14px; color: #333; }
+        .detail-value input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        .account-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+        .account-actions button, .delete-item { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .save-password { background: #4CAF50; color: white; }
+        .delete-account, .delete-item { background: #f44336; color: white; }
+
+        .add-account-section { background: #f5f5f5; padding: 20px; border-radius: 12px; margin: 20px 0; }
+        .add-account-section h4 { margin-bottom: 15px; color: #333; }
+        .add-account-form { display: flex; flex-direction: column; gap: 12px; }
+        .add-account-form input, .add-account-form select { padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
+        .add-account-form button { padding: 15px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+
+        .stats-card { background: #E3F2FD; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-around; }
+        .stat-item { text-align: center; }
+        .stat-number { font-size: 24px; font-weight: bold; color: #1976D2; }
+        .stat-label { font-size: 12px; color: #666; }
+        .back-btn { width: 100%; padding: 15px; background: #FF9800; color: white; border: none; border-radius: 10px; margin-top: 15px; cursor: pointer; font-size: 16px; font-weight: bold; }
+
+        .profile-info { background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0; }
+        .profile-item { margin: 15px 0; }
+        .profile-item label { display: block; margin-bottom: 5px; color: #666; font-size: 14px; }
+        .profile-item input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
+        .change-password-btn { width: 100%; padding: 15px; background: #2196F3; color: white; border: none; border-radius: 8px; margin-top: 10px; cursor: pointer; font-weight: bold; }
+
+        .edit-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; }
+        .modal-content { background: white; padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; }
+        .modal-content h3 { margin-bottom: 20px; color: #333; }
+        .modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-buttons button { flex: 1; padding: 15px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .save-btn { background: #4CAF50; color: white; }
+        .cancel-btn { background: #999; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 登入頁面 -->
+        <div id="loginScreen" class="login-screen">
+            <h1>🏠 家庭懲罰系統</h1>
+            <h2>選擇你的帳號登入 (雲端即時同步)</h2>
+            <div id="memberButtons" class="member-buttons">
+                <div style="color:#999; padding:20px;">資料庫連線中...</div>
+            </div>
+        </div>
+
+        <!-- 主頁面 -->
+        <div id="mainScreen" class="main-screen">
+            <div class="user-info">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="welcome" id="welcomeMessage">歡迎，</span>
+                    <span class="role-badge" id="roleBadge">一般成員</span>
+                </div>
+                <button class="logout-btn" onclick="logout()">登出</button>
+            </div>
+
+            <div class="header">
+                <h2>📋 懲罰列表</h2>
+                <div class="nav-buttons">
+                    <button class="nav-btn secondary" onclick="showAddTicket()">＋ 開罰單</button>
+                    <button class="nav-btn profile" onclick="showProfile()">👤 個人資料</button>
+                    <button class="nav-btn" id="adminBtn" onclick="showAdmin()" style="display:none;">⚙️ 管理</button>
+                </div>
+            </div>
+            
+            <div id="ticketList" class="ticket-list">
+                <div style="text-align:center; padding:30px; color:#999;">載入中...</div>
+            </div>
+        </div>
+
+        <!-- 開罰單頁面 -->
+        <div id="addTicketScreen" class="add-ticket-screen">
+            <div class="header">
+                <h2>📝 開罰單</h2>
+                <button class="nav-btn" onclick="backToMain()">返回</button>
+            </div>
+            
+            <div class="form-group">
+                <label>👤 誰被罰</label>
+                <select id="targetMemberSelect">
+                    <option value="">請選擇</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>📝 原因（為什麼被罰）</label>
+                <input type="text" id="reason" placeholder="例如：沒洗碗、打電動太久、說謊...">
+            </div>
+            
+            <div class="form-group">
+                <label>⚡ 懲罰方式</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="punishmentType" value="quick" checked onchange="togglePunishmentInput()">
+                        選擇常用懲罰
+                    </label>
+                    <label>
+                        <input type="radio" name="punishmentType" value="custom" onchange="togglePunishmentInput()">
+                        自訂懲罰
+                    </label>
+                </div>
+                
+                <div id="quickPunishmentDiv">
+                    <select id="quickPunishment" style="width:100%; padding:15px;">
+                        <option value="">選擇常用懲罰</option>
+                    </select>
+                </div>
+                
+                <div id="customPunishmentDiv" style="display:none;">
+                    <textarea id="customPunishment" placeholder="請輸入懲罰內容，例如：禁用手機2小時、掃地一週..."></textarea>
+                </div>
+            </div>
+            
+            <button class="nav-btn secondary" onclick="saveTicket()" style="width:100%; padding:15px;">💾 送出罰單</button>
+        </div>
+
+        <!-- 管理員頁面 -->
+        <div id="adminScreen" class="admin-screen">
+            <div class="header">
+                <h2>⚙️ 管理員設定</h2>
+                <button class="nav-btn" onclick="backToMain()">返回</button>
+            </div>
+
+            <div class="stats-card">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalMembers">0</div>
+                    <div class="stat-label">總成員數</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="totalTickets">0</div>
+                    <div class="stat-label">總罰單數</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="activeTickets">0</div>
+                    <div class="stat-label">未完成</div>
+                </div>
+            </div>
+
+            <div class="add-account-section">
+                <h4>➕ 新增帳號</h4>
+                <div class="add-account-form">
+                    <input type="text" id="newAccountName" placeholder="帳號名稱">
+                    <input type="password" id="newAccountPassword" placeholder="密碼">
+                    <select id="newAccountRole">
+                        <option value="member">一般成員</option>
+                        <option value="admin">管理員</option>
+                    </select>
+                    <button onclick="addAccount()">建立帳號</button>
+                </div>
+            </div>
+
+            <div class="section-title">📋 所有帳號</div>
+            <div id="accountsList" class="accounts-list"></div>
+
+            <div class="section-title">⚡ 常用懲罰</div>
+            <div class="add-account-section" style="margin-top:0;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newPunishment" placeholder="例如：禁用手機2小時" style="flex:1;">
+                    <button onclick="addPunishment()" style="padding:15px 20px; background:#4CAF50; color:white; border:none; border-radius:8px;">添加</button>
+                </div>
+            </div>
+            <div id="punishmentList" class="punishment-list"></div>
+
+            <button class="back-btn" onclick="backToMain()">返回主頁</button>
+        </div>
+
+        <!-- 個人資料頁面 -->
+        <div id="profileScreen" class="profile-screen">
+            <div class="header">
+                <h2>👤 個人資料</h2>
+                <button class="nav-btn" onclick="backToMain()">返回</button>
+            </div>
+
+            <div class="profile-info">
+                <div class="profile-item">
+                    <label>帳號名稱</label>
+                    <input type="text" id="profileName" readonly>
+                </div>
+                <div class="profile-item">
+                    <label>目前密碼</label>
+                    <input type="password" id="currentPassword" placeholder="請輸入目前密碼">
+                </div>
+                <div class="profile-item">
+                    <label>新密碼</label>
+                    <input type="password" id="newPassword" placeholder="請輸入新密碼">
+                </div>
+                <div class="profile-item">
+                    <label>確認新密碼</label>
+                    <input type="password" id="confirmPassword" placeholder="再次輸入新密碼">
+                </div>
+                <button class="change-password-btn" onclick="changePassword()">修改密碼</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 編輯罰單視窗 -->
+    <div id="editModal" class="edit-modal" style="display: none;">
+        <div class="modal-content">
+            <h3>✎ 編輯罰單</h3>
+            <div class="form-group">
+                <label>👤 誰被罰</label>
+                <select id="editTargetMember"></select>
+            </div>
+            <div class="form-group">
+                <label>📝 原因</label>
+                <input type="text" id="editReason">
+            </div>
+            <div class="form-group">
+                <label>⚡ 懲罰</label>
+                <textarea id="editPunishment" rows="3"></textarea>
+            </div>
+            <div class="modal-buttons">
+                <button class="save-btn" onclick="updateTicket()">更新</button>
+                <button class="cancel-btn" onclick="closeEditModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAjxjOrqo-Fh9AMh0vJGx6NE8Yxo-34c4k",
+            authDomain: "family-ticket-6b027.firebaseapp.com",
+            databaseURL: "https://family-ticket-6b027-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "family-ticket-6b027",
+            storageBucket: "family-ticket-6b027.firebasestorage.app",
+            messagingSenderId: "485848546129",
+            appId: "1:485848546129:web:e6814c525478bf131a3170",
+            measurementId: "G-2P6KY0FH2Z"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // 預設帳號修改：將 小明 改為 Oscar、小華 改為 Zoe
+        const defaultAccounts = [
+            { id: '1', name: '爸爸', password: '1111', role: 'member' },
+            { id: '2', name: '媽媽', password: '1111', role: 'member' },
+            { id: '3', name: 'Oscar', password: '1111', role: 'member' },
+            { id: '4', name: 'Zoe', password: '1111', role: 'member' },
+            { id: '5', name: 'admin', password: 'admin123', role: 'admin' }
+        ];
+
+        const defaultPunishments = [
+            '📵 禁用手機 2 小時',
+            '🧹 掃地一週',
+            '💰 跑腿買飲料',
+            '🎮 不能打電動一天',
+            '🛏️️ 整理房間',
+            '🍽️ 洗碗一週'
+        ];
+
+        let accounts = [];
+        let punishments = [];
+        let tickets = [];
+        let currentUser = null;
+        let currentEditId = null;
+        let editingAccountId = null;
+
+        // 即時資料連線
+        db.ref('accounts').on('value', snapshot => {
+            const val = snapshot.val();
+            if (val) {
+                accounts = Array.isArray(val) ? val.filter(Boolean) : Object.values(val);
+            } else {
+                accounts = defaultAccounts;
+                db.ref('accounts').set(accounts);
+            }
+            displayMemberButtons();
+            if (document.getElementById('adminScreen').style.display === 'block') {
+                displayAccountsList();
+                updateStats();
+            }
+        });
+
+        db.ref('tickets').on('value', snapshot => {
+            const val = snapshot.val();
+            tickets = val ? Object.values(val) : [];
+            displayTickets();
+            if (document.getElementById('adminScreen').style.display === 'block') {
+                updateStats();
+            }
+        });
+
+        db.ref('punishments').on('value', snapshot => {
+            const val = snapshot.val();
+            if (val) {
+                punishments = Array.isArray(val) ? val.filter(Boolean) : Object.values(val);
+            } else {
+                punishments = defaultPunishments;
+                db.ref('punishments').set(punishments);
+            }
+            if (document.getElementById('adminScreen').style.display === 'block') {
+                displayPunishmentsList();
+            }
+        });
+
+        function saveAccountsToCloud() { db.ref('accounts').set(accounts); }
+        function savePunishmentsToCloud() { db.ref('punishments').set(punishments); }
+
+        function displayMemberButtons() {
+            const container = document.getElementById('memberButtons');
+            container.innerHTML = '';
+            
+            accounts.forEach(account => {
+                if(!account) return;
+                const btn = document.createElement('button');
+                btn.className = `member-btn ${account.role === 'admin' ? 'admin' : ''}`;
+                
+                if (account.role === 'admin') {
+                    btn.innerHTML = `👑 管理員登入 <span class="badge">${account.name}</span>`;
+                } else {
+                    btn.innerHTML = `👤 ${account.name}`;
+                }
+                
+                btn.onclick = () => showPasswordDialog(account);
+                container.appendChild(btn);
+            });
+        }
+
+        function showPasswordDialog(account) {
+            if (account.role === 'admin') {
+                const pwd = prompt(`請輸入管理員 ${account.name} 的密碼：`);
+                if (pwd === account.password) {
+                    login(account);
+                } else {
+                    alert('密碼錯誤！');
+                }
+            } else {
+                login(account);
+            }
+        }
+
+        function login(account) {
+            currentUser = account;
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainScreen').style.display = 'block';
+            document.getElementById('welcomeMessage').textContent = `歡迎，${account.name}！`;
+            document.getElementById('roleBadge').textContent = account.role === 'admin' ? '管理員' : '一般成員';
+            document.getElementById('adminBtn').style.display = account.role === 'admin' ? 'block' : 'none';
+            displayTickets();
+        }
+
+        function logout() {
+            currentUser = null;
+            document.getElementById('mainScreen').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'block';
+            displayMemberButtons();
+        }
+
+        function displayTickets() {
+            const list = document.getElementById('ticketList');
+            if (!list) return;
+
+            if (tickets.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:30px; color:#999;">📭 目前沒有懲罰記錄</div>';
+                return;
+            }
+
+            tickets.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            list.innerHTML = '';
+            tickets.forEach(ticket => {
+                const canEdit = currentUser?.role === 'admin' || ticket.createdBy === currentUser?.name;
+                const completedClass = ticket.completed ? 'completed-ticket' : '';
+                const completedBadge = ticket.completed ? '<span class="completed-badge">✓ 已完成</span>' : '';
+                
+                list.innerHTML += `
+                    <div class="ticket-card ${completedClass}">
+                        <div class="ticket-header">
+                            <h3>${ticket.targetMember}</h3>
+                            <span class="ticket-date">📅 ${ticket.date}</span>
+                        </div>
+                        <div class="ticket-creator">
+                            👨‍⚖️ 開單人：${ticket.createdBy}
+                        </div>
+                        <div class="ticket-reason">
+                            <strong>📝 原因：</strong> ${ticket.reason}
+                        </div>
+                        <div class="ticket-punishment">
+                            <strong>⚡ 懲罰：</strong> ${ticket.punishment}
+                        </div>
+                        <div class="ticket-footer">
+                            <div>${completedBadge}</div>
+                            <div class="ticket-actions">
+                                ${!ticket.completed && canEdit ? 
+                                    `<button class="complete-btn" onclick="completeTicket('${ticket.id}')">✓ 完成</button>` : ''}
+                                ${canEdit ? 
+                                    `<button class="edit-btn" onclick="editTicket('${ticket.id}')">✎ 編輯</button>` : ''}
+                                ${canEdit ? 
+                                    `<button class="delete-btn" onclick="deleteTicket('${ticket.id}')">✕ 刪除</button>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function showAddTicket() {
+            updateTargetMemberSelect('targetMemberSelect');
+            updateQuickPunishment();
+            document.getElementById('mainScreen').style.display = 'none';
+            document.getElementById('addTicketScreen').style.display = 'block';
+        }
+
+        function showAdmin() {
+            if (currentUser?.role !== 'admin') {
+                alert('只有管理員可以進入！');
+                return;
+            }
+            updateStats();
+            displayAccountsList();
+            displayPunishmentsList();
+            document.getElementById('mainScreen').style.display = 'none';
+            document.getElementById('adminScreen').style.display = 'block';
+        }
+
+        function showProfile() {
+            document.getElementById('profileName').value = currentUser?.name || '';
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            document.getElementById('mainScreen').style.display = 'none';
+            document.getElementById('profileScreen').style.display = 'block';
+        }
+
+        function backToMain() {
+            document.getElementById('mainScreen').style.display = 'block';
+            document.getElementById('addTicketScreen').style.display = 'none';
+            document.getElementById('adminScreen').style.display = 'none';
+            document.getElementById('profileScreen').style.display = 'none';
+            displayTickets();
+        }
+
+        function updateTargetMemberSelect(selectId) {
+            const select = document.getElementById(selectId);
+            select.innerHTML = '<option value="">請選擇</option>';
+            accounts.filter(a => a && a.role !== 'admin').forEach(account => {
+                select.innerHTML += `<option value="${account.name}">${account.name}</option>`;
+            });
+        }
+
+        function updateQuickPunishment() {
+            const select = document.getElementById('quickPunishment');
+            select.innerHTML = '<option value="">選擇常用懲罰</option>';
+            punishments.forEach(p => {
+                if(p) select.innerHTML += `<option value="${p}">${p}</option>`;
+            });
+        }
+
+        function togglePunishmentInput() {
+            const quickDiv = document.getElementById('quickPunishmentDiv');
+            const customDiv = document.getElementById('customPunishmentDiv');
+            const quickRadio = document.querySelector('input[value="quick"]').checked;
+            
+            if (quickRadio) {
+                quickDiv.style.display = 'block';
+                customDiv.style.display = 'none';
+            } else {
+                quickDiv.style.display = 'none';
+                customDiv.style.display = 'block';
+            }
+        }
+
+        function saveTicket() {
+            const targetMember = document.getElementById('targetMemberSelect').value;
+            const reason = document.getElementById('reason').value.trim();
+            const quickRadio = document.querySelector('input[value="quick"]').checked;
+            
+            let punishment;
+            if (quickRadio) {
+                punishment = document.getElementById('quickPunishment').value;
+            } else {
+                punishment = document.getElementById('customPunishment').value.trim();
+            }
+
+            if (!targetMember || !reason || !punishment) {
+                alert('請填寫完整！');
+                return;
+            }
+
+            const today = new Date();
+            const dateStr = today.getFullYear() + '-' + 
+                          String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                          String(today.getDate()).padStart(2, '0');
+
+            const id = Date.now().toString();
+            const newTicket = {
+                id: id,
+                targetMember: targetMember,
+                reason: reason,
+                punishment: punishment,
+                date: dateStr,
+                createdBy: currentUser.name,
+                completed: false
+            };
+
+            db.ref('tickets/' + id).set(newTicket);
+
+            document.getElementById('reason').value = '';
+            document.getElementById('customPunishment').value = '';
+            backToMain();
+            alert('罰單開立成功！');
+        }
+
+        function completeTicket(id) {
+            db.ref('tickets/' + id + '/completed').set(true);
+        }
+
+        function editTicket(id) {
+            const ticket = tickets.find(t => t.id === id);
+            if (ticket) {
+                currentEditId = id;
+                updateTargetMemberSelect('editTargetMember');
+                document.getElementById('editTargetMember').value = ticket.targetMember;
+                document.getElementById('editReason').value = ticket.reason;
+                document.getElementById('editPunishment').value = ticket.punishment;
+                document.getElementById('editModal').style.display = 'flex';
+            }
+        }
+
+        function updateTicket() {
+            const targetMember = document.getElementById('editTargetMember').value;
+            const reason = document.getElementById('editReason').value.trim();
+            const punishment = document.getElementById('editPunishment').value.trim();
+
+            if (currentEditId) {
+                db.ref('tickets/' + currentEditId).update({
+                    targetMember: targetMember,
+                    reason: reason,
+                    punishment: punishment
+                });
+                closeEditModal();
+            }
+        }
+
+        function deleteTicket(id) {
+            if (confirm('確定要刪除這張罰單嗎？')) {
+                db.ref('tickets/' + id).remove();
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            currentEditId = null;
+        }
+
+        function updateStats() {
+            document.getElementById('totalMembers').textContent = accounts.length;
+            document.getElementById('totalTickets').textContent = tickets.length;
+            document.getElementById('activeTickets').textContent = tickets.filter(t => !t.completed).length;
+        }
+
+        function displayAccountsList() {
+            const list = document.getElementById('accountsList');
+            list.innerHTML = '';
+            
+            accounts.forEach(account => {
+                if(!account) return;
+                const isEditing = editingAccountId === account.id;
+                
+                list.innerHTML += `
+                    <div class="account-card">
+                        <div class="account-header">
+                            <span class="account-name">${account.name}</span>
+                            <span class="account-role ${account.role === 'admin' ? 'role-admin' : 'role-member'}">
+                                ${account.role === 'admin' ? '管理員' : '一般成員'}
+                            </span>
+                        </div>
+                        
+                        ${isEditing ? `
+                            <div class="account-details">
+                                <div class="account-detail">
+                                    <span class="detail-label">新密碼</span>
+                                    <div class="detail-value">
+                                        <input type="password" id="editPwd_${account.id}" placeholder="請輸入新密碼">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="account-actions">
+                                <button class="save-password" onclick="savePassword('${account.id}')">儲存密碼</button>
+                                <button class="cancel-btn" onclick="cancelEditPassword()">取消</button>
+                            </div>
+                        ` : `
+                            <div class="account-details">
+                                <div class="account-detail">
+                                    <span class="detail-label">密碼</span>
+                                    <div class="detail-value">${account.password}</div>
+                                </div>
+                            </div>
+                            <div class="account-actions">
+                                <button class="edit-btn" onclick="editPassword('${account.id}')">修改密碼</button>
+                                ${account.name !== 'admin' ? 
+                                    `<button class="delete-account" onclick="deleteAccount('${account.id}')">刪除帳號</button>` : 
+                                    '<button class="delete-account" disabled style="opacity:0.5;">不能刪除</button>'}
+                            </div>
+                        `}
+                    </div>
+                `;
+            });
+        }
+
+        function addAccount() {
+            const name = document.getElementById('newAccountName').value.trim();
+            const password = document.getElementById('newAccountPassword').value.trim();
+            const role = document.getElementById('newAccountRole').value;
+
+            if (!name || !password) {
+                alert('請填寫帳號名稱和密碼！');
+                return;
+            }
+
+            if (accounts.some(a => a && a.name === name)) {
+                alert('帳號名稱已經存在！');
+                return;
+            }
+
+            const newAccount = {
+                id: Date.now().toString(),
+                name: name,
+                password: password,
+                role: role
+            };
+
+            accounts.push(newAccount);
+            saveAccountsToCloud();
+            
+            document.getElementById('newAccountName').value = '';
+            document.getElementById('newAccountPassword').value = '';
+            alert('帳號建立成功！');
+        }
+
+        function editPassword(accountId) {
+            editingAccountId = accountId;
+            displayAccountsList();
+        }
+
+        function savePassword(accountId) {
+            const newPassword = document.getElementById(`editPwd_${accountId}`).value;
+            if (!newPassword) {
+                alert('請輸入新密碼！');
+                return;
+            }
+
+            const account = accounts.find(a => a && a.id === accountId);
+            if (account) {
+                account.password = newPassword;
+                saveAccountsToCloud();
+                editingAccountId = null;
+                alert('密碼修改成功！');
+            }
+        }
+
+        function cancelEditPassword() {
+            editingAccountId = null;
+            displayAccountsList();
+        }
+
+        function deleteAccount(accountId) {
+            const account = accounts.find(a => a && a.id === accountId);
+            
+            if (account.name === 'admin') {
+                alert('不能刪除管理員帳號！');
+                return;
+            }
+
+            if (confirm(`確定要刪除帳號 ${account.name} 嗎？`)) {
+                accounts = accounts.filter(a => a && a.id !== accountId);
+                saveAccountsToCloud();
+                alert('帳號已刪除！');
+            }
+        }
+
+        function displayPunishmentsList() {
+            const list = document.getElementById('punishmentList');
+            list.innerHTML = '';
+            punishments.forEach(p => {
+                if(!p) return;
+                list.innerHTML += `
+                    <div class="member-item">
+                        <span>${p}</span>
+                        <button class="delete-item" onclick="deletePunishment('${p}')">刪除</button>
+                    </div>
+                `;
+            });
+        }
+
+        function addPunishment() {
+            const text = document.getElementById('newPunishment').value.trim();
+            if (text && !punishments.includes(text)) {
+                punishments.push(text);
+                savePunishmentsToCloud();
+                document.getElementById('newPunishment').value = '';
+            }
+        }
+
+        function deletePunishment(text) {
+            if (confirm('確定刪除這個常用懲罰嗎？')) {
+                punishments = punishments.filter(p => p !== text);
+                savePunishmentsToCloud();
+            }
+        }
+
+        function changePassword() {
+            const currentPwd = document.getElementById('currentPassword').value;
+            const newPwd = document.getElementById('newPassword').value;
+            const confirmPwd = document.getElementById('confirmPassword').value;
+
+            if (!currentPwd || !newPwd || !confirmPwd) {
+                alert('請填寫所有密碼欄位！');
+                return;
+            }
+
+            if (currentPwd !== currentUser.password) {
+                alert('目前密碼錯誤！');
+                return;
+            }
+
+            if (newPwd !== confirmPwd) {
+                alert('兩次輸入的新密碼不一致！');
+                return;
+            }
+
+            currentUser.password = newPwd;
+            const account = accounts.find(a => a && a.id === currentUser.id);
+            if (account) {
+                account.password = newPwd;
+            }
+            saveAccountsToCloud();
+            
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('confirmPassword').value = '';
+            alert('密碼修改成功！');
+        }
+    </script>
+</body>
+</html>
